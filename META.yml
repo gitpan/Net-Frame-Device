@@ -1,0 +1,21 @@
+--- #YAML:1.0
+name:                Net-Frame-Device
+version:             1.00_01
+abstract:            get network device information and gateway
+license:             Artistic
+generated_by:        ExtUtils::MakeMaker version 6.31
+distribution_type:   module
+requires:     
+    Class::Gomor:                  1.00
+    Net::Frame:                    0
+    Net::Frame::Dump:              0
+    Net::IPv4Addr:                 0
+    Net::IPv6Addr:                 0
+    Net::Libdnet:                  0
+    Net::Pcap:                     0.12
+    Net::Write:                    1.00
+meta-spec:
+    url:     http://module-build.sourceforge.net/META-spec-v1.2.html
+    version: 1.2
+author:
+    - GomoR <perl@gomor.org>

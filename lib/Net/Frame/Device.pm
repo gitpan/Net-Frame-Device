@@ -1,11 +1,11 @@
 #
-# $Id: Device.pm,v 1.4 2006/12/03 16:10:12 gomor Exp $
+# $Id: Device.pm,v 1.5 2006/12/06 21:12:41 gomor Exp $
 #
 package Net::Frame::Device;
 use strict;
 use warnings;
 
-our $VERSION = '1.00_01';
+our $VERSION = '1.00_02';
 
 require Class::Gomor::Array;
 our @ISA = qw(Class::Gomor::Array);
@@ -75,13 +75,17 @@ sub updateFromDefault {
 
 sub updateFromDev {
    my $self = shift;
+   my ($dev) = @_;
+   $self->[$__dev]   = $dev if $dev;
    $self->[$___dnet] = Net::Libdnet::intf_get($self->[$__dev]);
    $self->_update;
 }
 
 sub updateFromTarget {
    my $self = shift;
-   $self->[$___dnet] = Net::Libdnet::intf_get_dst($self->[$__target]);
+   my ($target) = @_;
+   $self->[$__target] = $target if $target;
+   $self->[$___dnet]  = Net::Libdnet::intf_get_dst($self->[$__target]);
    $self->_update;
 }
 
@@ -373,6 +377,10 @@ mac:             if not user provided, default interface MAC is used, by calling
 =item B<updateFromDev>
 
 =item B<updateFromTarget>
+
+=item B<lookupMac>
+
+=item B<debugDeviceList>
 
 =back
 

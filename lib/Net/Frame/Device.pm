@@ -1,11 +1,11 @@
 #
-# $Id: Device.pm,v 1.5 2006/12/06 21:12:41 gomor Exp $
+# $Id: Device.pm,v 1.7 2006/12/09 18:01:16 gomor Exp $
 #
 package Net::Frame::Device;
 use strict;
 use warnings;
 
-our $VERSION = '1.00_02';
+our $VERSION = '1.00';
 
 require Class::Gomor::Array;
 our @ISA = qw(Class::Gomor::Array);
@@ -41,7 +41,7 @@ require Net::IPv4Addr;
 require Net::IPv6Addr;
 require Net::Pcap;
 require Net::Write::Layer2;
-require Net::Frame::Dump;
+require Net::Frame::Dump::Online;
 use Net::Frame::ETH qw(:consts);
 require Net::Frame::ARP;
 
@@ -189,8 +189,8 @@ sub _lookupMac {
 
    my $eth = Net::Frame::ETH->new(
       src  => $self->[$__mac],
-      dst  => NP_ETH_ADDR_BROADCAST,
-      type => NP_ETH_TYPE_ARP,
+      dst  => NF_ETH_ADDR_BROADCAST,
+      type => NF_ETH_TYPE_ARP,
    );
    my $arp = Net::Frame::ARP->new(
       src   => $self->[$__mac],
@@ -201,7 +201,10 @@ sub _lookupMac {
    $arp->pack;
 
    my $oWrite = Net::Write::Layer2->new(dev => $self->[$__dev]);
-   my $oDump  = Net::Frame::Dump->new(dev => $self->[$__dev], filter => 'arp');
+   my $oDump  = Net::Frame::Dump::Online->new(
+      dev => $self->[$__dev],
+      filter => 'arp',
+   );
 
    $oDump->start;
    $oWrite->open;
@@ -228,7 +231,6 @@ sub _lookupMac {
 
    $oWrite->close;
    $oDump->stop;
-   $oDump->clean;
 
    $mac;
 }
@@ -316,7 +318,9 @@ Net::Frame::Device - get network device information and gateway
 
 =head1 DESCRIPTION
 
-Basically, this module is used to tell where to inject a frame. XXX: todo
+This module is used to get network information, and is especially useful when you want to do low-level network programming.
+
+It also provides useful functions to lookup network MAC addresses.
 
 =head1 ATTRIBUTES
 
@@ -324,11 +328,11 @@ Basically, this module is used to tell where to inject a frame. XXX: todo
 
 =item B<dev>
 
-The network device.
+The network device. If none found, it defaults to loopback interface.
 
 =item B<ip>
 
-The IPv4 address of B<dev>.
+The IPv4 address of B<dev>. If none found, it defaults to '127.0.0.1'.
 
 =item B<ip6>
 
@@ -340,15 +344,15 @@ The MAC address of B<dev>. If none found, it defaults to 'ff:ff:ff:ff:ff:ff'.
 
 =item B<subnet>
 
-The subnet of IPv4 address B<ip>.
+The subnet of IPv4 address B<ip>. If none found, it defaults to '127.0.0.0/8';
 
 =item B<gatewayIp>
 
-The gateway IPv4 address. It defaults to default gateway that let you access Internet.
+The gateway IPv4 address. It defaults to default gateway that let you access Internet. If none found, or not required in the usage context, it defaults to undef.
 
 =item B<gatewayMac>
 
-The MAC address B<gatewayIp>. The MAC is looked up from cache. If no entry is found, attribute will be undef.
+The MAC address B<gatewayIp>. The MAC is looked up from cache. If there is nothing in the cache, it does an ARP request to get it. Finally, if there is no response, attribute is set to undef.
 
 =item B<target>
 
@@ -362,25 +366,33 @@ This attribute is used when you want to detect which B<dev>, B<ip>, B<mac> attri
 
 =item B<new>
 
-Object constructor. Default values:
+=item B<new> (hash)
 
-dev:             if not user provided, default interface is used, by calling B<getDevInfo> method. If user provided, all B<ip>, B<ip6> and B<mac> attributes will be used for that B<dev>.
-
-ip:              if not user provided, default interface IP is used, by calling B<getIp> method. If user provided, it is overwritten by the user.
-
-ip6:             if not user provided, default interface IPv6 is used, by calling B<getIp6> method. If user provided, it is overwritten by the user.
-
-mac:             if not user provided, default interface MAC is used, by calling B<getMac> method. If user provided, it is overwritten by the user.
+Object constructor. See B<SYNOPSIS> for default values.
 
 =item B<updateFromDefault>
 
+Will update attributes according to the default interface that has access to Internet.
+
 =item B<updateFromDev>
+
+=item B<updateFromDev> (dev)
+
+Will update attributes according to B<dev> attribute, or if you specify 'dev' as a parameter, it will use it for updating (and will also set B<dev> to this new value).
 
 =item B<updateFromTarget>
 
-=item B<lookupMac>
+=item B<updateFromTarget> (target)
+
+Will update attributes according to B<target> attribute, or if you specify 'target' as a parameter, it will use it for updating (and will also set B<target> to this new value).
+
+=item B<lookupMac> (IPv4 address)
+
+Will try to get the MAC address of the specified IPv4 address. First, if checks against ARP cache table. Then, verify the target is on the same subnet as we are, and if yes, it does the ARP request. If not on the same subnet, it tries to resolve the gateway MAC address (by using B<gatewayIp> attribute). Returns undef on failure.
 
 =item B<debugDeviceList>
+
+Just for debugging purposes, especially on Windows systems.
 
 =back
 

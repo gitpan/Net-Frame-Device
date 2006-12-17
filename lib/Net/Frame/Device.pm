@@ -1,11 +1,11 @@
 #
-# $Id: Device.pm,v 1.7 2006/12/09 18:01:16 gomor Exp $
+# $Id: Device.pm,v 1.8 2006/12/17 16:21:54 gomor Exp $
 #
 package Net::Frame::Device;
 use strict;
 use warnings;
 
-our $VERSION = '1.00';
+our $VERSION = '1.01';
 
 require Class::Gomor::Array;
 our @ISA = qw(Class::Gomor::Array);
@@ -42,8 +42,8 @@ require Net::IPv6Addr;
 require Net::Pcap;
 require Net::Write::Layer2;
 require Net::Frame::Dump::Online;
-use Net::Frame::ETH qw(:consts);
-require Net::Frame::ARP;
+use Net::Frame::Layer::ETH qw(:consts);
+require Net::Frame::Layer::ARP;
 
 sub new {
    my $self = shift->SUPER::new(@_);
@@ -187,12 +187,12 @@ sub _lookupMac {
    my $self = shift;
    my ($ip) = @_;
 
-   my $eth = Net::Frame::ETH->new(
+   my $eth = Net::Frame::Layer::ETH->new(
       src  => $self->[$__mac],
       dst  => NF_ETH_ADDR_BROADCAST,
       type => NF_ETH_TYPE_ARP,
    );
-   my $arp = Net::Frame::ARP->new(
+   my $arp = Net::Frame::Layer::ARP->new(
       src   => $self->[$__mac],
       srcIp => $self->[$__ip],
       dstIp => $ip,
@@ -217,7 +217,7 @@ sub _lookupMac {
          if (my $h = $oDump->next) {
             if ($h->{firstLayer} eq 'ETH') {
                my $raw  = substr($h->{raw}, $eth->getLength);
-               my $rArp = Net::Frame::ARP->new(raw => $raw);
+               my $rArp = Net::Frame::Layer::ARP->new(raw => $raw);
                $rArp->unpack;
                next unless $rArp->srcIp eq $ip;
                $mac = $rArp->src;
@@ -313,7 +313,7 @@ Net::Frame::Device - get network device information and gateway
    print "mac: ", $device->mac, "\n";
    print "ip : ", $device->ip,  "\n";
    print "ip6: ", $device->ip6, "\n";
-   print "gatewayIp:  ", $device->gatewayIp,  "\n";
+   print "gatewayIp:  ", $device->gatewayIp,  "\n" if $device->gatewayIp;
    print "gatewayMac: ", $device->gatewayMac, "\n" if $device->gatewayMac;
 
 =head1 DESCRIPTION

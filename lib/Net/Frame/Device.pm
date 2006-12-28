@@ -1,24 +1,28 @@
 #
-# $Id: Device.pm,v 1.8 2006/12/17 16:21:54 gomor Exp $
+# $Id: Device.pm,v 1.13 2006/12/28 15:57:19 gomor Exp $
 #
 package Net::Frame::Device;
 use strict;
 use warnings;
 
-our $VERSION = '1.01';
+our $VERSION = '1.02';
 
 require Class::Gomor::Array;
 our @ISA = qw(Class::Gomor::Array);
 
 our @AS = qw(
    dev
+   mac
    ip
    ip6
-   mac
    subnet
+   subnet6
    gatewayIp
+   gatewayIp6
    gatewayMac
+   gatewayMac6
    target
+   target6
    _dnet
 );
 __PACKAGE__->cgBuildIndices;
@@ -35,49 +39,69 @@ BEGIN {
 
 no strict 'vars';
 
-use Carp qw(croak);
-require Net::Libdnet;
+use Carp qw(croak carp);
+use Data::Dumper;
+use Net::Libdnet6;
 require Net::IPv4Addr;
 require Net::IPv6Addr;
 require Net::Pcap;
 require Net::Write::Layer2;
-require Net::Frame::Dump::Online;
+use Net::Frame::Dump qw(:consts);
+use Net::Frame::Dump::Online;
+use Net::Frame::Layer qw(:subs);
 use Net::Frame::Layer::ETH qw(:consts);
-require Net::Frame::Layer::ARP;
+use Net::Frame::Layer::ARP qw(:consts);
+use Net::Frame::Layer::IPv6 qw(:consts);
+use Net::Frame::Layer::ICMPv6 qw(:consts);
+use Net::Frame::Simple;
 
 sub new {
    my $self = shift->SUPER::new(@_);
 
-   $self->[$__dev]    && return $self->updateFromDev;
-   $self->[$__target] && return $self->updateFromTarget;
+   $self->[$__target]  && return $self->updateFromTarget;
+   $self->[$__target6] && return $self->updateFromTarget6;
+   $self->[$__dev]     && return $self->updateFromDev;
 
    $self->updateFromDefault;
 }
 
 sub _update {
    my $self = shift;
-   $self->[$__dev]    = $self->_getDev;
-   $self->[$__mac]    = $self->_getMac;
-   $self->[$__ip]     = $self->_getIp;
-   $self->[$__ip6]    = $self->_getIp6;
-   $self->[$__subnet] = $self->_getSubnet;
+   my ($dnet6) = @_;
+
+   $self->[$__dev]        = $self->_getDev;
+   $self->[$__mac]        = $self->_getMac;
+   $self->[$__ip]         = $self->_getIp;
+   $self->[$__subnet]     = $self->_getSubnet;
    $self->[$__gatewayIp]  = $self->_getGatewayIp;
    $self->[$__gatewayMac] = $self->_getGatewayMac;
+
+   if ($dnet6) {
+      $self->[$___dnet] = $dnet6;
+   }
+
+   $self->[$__ip6]        = $self->_getIp6;
+   $self->[$__subnet6]    = $self->_getSubnet6;
+   $self->[$__gatewayIp6] = $self->_getGatewayIp6;
+
+   $self->[$___dnet] = undef;
    $self;
 }
 
 # By default, we take outgoing device to Internet
 sub updateFromDefault {
    my $self = shift;
-   $self->[$___dnet] = Net::Libdnet::intf_get_dst('1.1.1.1');
-   $self->_update;
+   $self->[$___dnet] = intf_get_dst('1.1.1.1');
+
+   my $dnet6 = intf_get6($self->[$___dnet]->{name});
+   $self->_update($dnet6);
 }
 
 sub updateFromDev {
    my $self = shift;
    my ($dev) = @_;
    $self->[$__dev]   = $dev if $dev;
-   $self->[$___dnet] = Net::Libdnet::intf_get($self->[$__dev]);
+   $self->[$___dnet] = intf_get6($self->[$__dev]);
    $self->_update;
 }
 
@@ -85,7 +109,27 @@ sub updateFromTarget {
    my $self = shift;
    my ($target) = @_;
    $self->[$__target] = $target if $target;
-   $self->[$___dnet]  = Net::Libdnet::intf_get_dst($self->[$__target]);
+   $self->[$___dnet]  = intf_get_dst($self->[$__target]);
+
+   my $dnet6 = intf_get6($self->[$___dnet]->{name});
+   $self->_update($dnet6);
+}
+
+sub updateFromTarget6 {
+   my $self = shift;
+   my ($target6) = @_;
+   $self->[$__target6] = $target6 if $target6;
+   my @dnetList = intf_get_dst6($self->[$__target6]);
+   if (@dnetList > 1) {
+      if (! $self->[$__dev]) {
+         croak("Multiple possible network interface for target6, ".
+               "choose `dev' manually\n");
+      }
+      $self->[$___dnet] = intf_get6($self->[$__dev]);
+   }
+   else {
+      $self->[$___dnet] = $dnetList[0];
+   }
    $self->_update;
 }
 
@@ -103,7 +147,7 @@ sub _getDevWin32 {
 
    # Get dnet interface name and its subnet
    my $dnet   = $self->[$___dnet]->{name};
-   my $subnet = Net::Libdnet::addr_net($self->[$___dnet]->{addr});
+   my $subnet = addr_net($self->[$___dnet]->{addr});
    croak("@{[(caller(0))[3]]}: Net::Libdnet::addr_net() error\n")
       unless $subnet;
 
@@ -130,16 +174,12 @@ sub _getDevWin32 {
    undef;
 }
 
-sub _getDevOther {
-   shift->[$___dnet]->{name} || (($^O eq 'linux') ? 'lo' : 'lo0');
-}
+sub _getDevOther { shift->[$___dnet]->{name} || undef }
 
-sub _getGatewayIp {
-   my $self = shift;
-   Net::Libdnet::route_get($self->[$__target] || '1.1.1.1') || undef;
-}
+sub _getGatewayIp  { route_get (shift()->[$__target]  || '1.1.1.1') || undef }
+sub _getGatewayIp6 { route_get6(shift()->[$__target6] || '2001::1') || undef }
 
-sub _getMacFromCache { shift; Net::Libdnet::arp_get(shift()) }
+sub _getMacFromCache { shift; arp_get(shift()) }
 
 sub _getGatewayMac {
     my $self = shift;
@@ -149,38 +189,32 @@ sub _getGatewayMac {
 
 sub _getSubnet {
    my $addr = shift->[$___dnet]->{addr};
-   return '127.0.0.0/8' unless $addr;
-
-   my $subnet = Net::Libdnet::addr_net($addr);
+   return undef unless $addr;
+   my $subnet = addr_net($addr);
    (my $mask = $addr) =~ s/^.*(\/\d+)$/$1/;
    $subnet.$mask;
 }
 
-sub _getMac { shift->[$___dnet]->{link_addr} || 'ff:ff:ff:ff:ff:ff' }
+sub _getSubnet6 {
+   my $addr = shift->[$___dnet]->{addr6};
+   return undef unless $addr;
+   my $subnet = addr_net6($addr);
+   (my $mask = $addr) =~ s/^.*(\/\d+)$/$1/;
+   $subnet.$mask;
+}
+
+sub _getMac { shift->[$___dnet]->{link_addr} || undef }
 
 sub _getIp {
-   my $ip = shift->[$___dnet]->{addr} || '127.0.0.1';
+   my $ip = shift->[$___dnet]->{addr} || return undef;
    $ip =~ s/\/\d+$//;
    $ip;
 }
 
 sub _getIp6 {
-   my $self = shift;
-
-   # XXX: No IP6 under Windows for now
-   return '::1' if $^O =~ m/MSWin32|cygwin/i;
-
-   my $dev = $self->[$__dev];
-   my $mac = $self->[$__mac];
-   my $buf = `/sbin/ifconfig $dev 2> /dev/null`;
-   $buf =~ s/$dev//;
-   $buf =~ s/$mac//i;
-   my ($ip6) = ($buf =~ /((?:[a-f0-9]{1,4}(?::|%|\/){1,2})+)/i); # XXX: better
-   if ($ip6) {
-      $ip6 =~ s/%|\///g;
-      $ip6 = lc($ip6);
-   }
-   ($ip6 && Net::IPv6Addr::ipv6_chkip($ip6) && $ip6) || '::1';
+   my $ip = shift->[$___dnet]->{addr6} || return undef;
+   $ip =~ s/\/\d+$//;
+   $ip;
 }
 
 sub _lookupMac {
@@ -202,11 +236,16 @@ sub _lookupMac {
 
    my $oWrite = Net::Write::Layer2->new(dev => $self->[$__dev]);
    my $oDump  = Net::Frame::Dump::Online->new(
-      dev => $self->[$__dev],
+      dev    => $self->[$__dev],
       filter => 'arp',
    );
 
    $oDump->start;
+   if ($oDump->firstLayer != NF_DUMP_LAYER_ETH) {
+      $oDump->stop;
+      croak("lookupMac: can't do that on non-ethernet link layers\n");
+   }
+
    $oWrite->open;
 
    # We retry three times
@@ -257,11 +296,133 @@ sub lookupMac {
       $self->[$__gatewayMac] = $gatewayMac;
       return $gatewayMac;
    }
+   undef;
+}
+
+sub _lookupMac6 {
+   my $self = shift;
+   my ($ip6, $srcIp6) = @_;
+
+   my $srcMac = $self->[$__mac];
+
+   # XXX: risky
+   my $target6 = Net::IPv6Addr->new($ip6)->to_string_preferred;
+   my @dst = split(':', $target6);
+   my $str = $dst[-2];
+   $str =~ s/^.*(..)$/$1/;
+   $target6 = 'ff02::1:ff'.$str.':'.$dst[-1];
+
+   my $eth = Net::Frame::Layer::ETH->new(
+      src  => $srcMac,
+      dst  => NF_ETH_ADDR_BROADCAST,
+      type => NF_ETH_TYPE_IPv6,
+   );
+   my $ip = Net::Frame::Layer::IPv6->new(
+      src        => $srcIp6,
+      dst        => $target6,
+      nextHeader => NF_IPv6_PROTOCOL_ICMPv6,
+   );
+   my $icmp = Net::Frame::Layer::ICMPv6->new(
+      type     => NF_ICMPv6_TYPE_NEIGHBORSOLICITATION,
+      icmpType => Net::Frame::Layer::ICMPv6::NeighborSolicitation->new(
+         targetAddress => $ip6,
+      ),
+      options => [
+         Net::Frame::Layer::ICMPv6::Option->new(
+            type   => NF_ICMPv6_OPTION_SOURCELINKLAYERADDRESS,
+            length => 1,
+            value  => pack('H2H2H2H2H2H2', split(':', $srcMac)),
+         ),
+      ],
+   );
+
+   my $oSimple = Net::Frame::Simple->new(
+      layers => [ $eth, $ip, $icmp, ],
+   );
+
+   my $oWrite = Net::Write::Layer2->new(dev => $self->[$__dev]);
+   my $oDump  = Net::Frame::Dump::Online->new(
+      dev    => $self->[$__dev],
+      filter => 'icmp6',
+   );
+
+   $oDump->start;
+   if ($oDump->firstLayer != NF_DUMP_LAYER_ETH) {
+      $oDump->stop;
+      croak("lookupMac: can't do that on non-ethernet link layers\n");
+   }
+
+   $oWrite->open;
+
+   # We retry three times
+   my $mac;
+FIRST:
+   for (1..3) {
+      $oWrite->send($oSimple->raw);
+      until ($oDump->timeout) {
+         if (my $oReply = $oSimple->recv($oDump)) {
+            for ($oReply->ref->{ICMPv6}->options) {
+               if ($_->type eq NF_ICMPv6_OPTION_TARGETLINKLAYERADDRESS) {
+                  $mac = convertMac(unpack('H*', $_->value));
+                  last FIRST;
+               }
+            }
+         }
+      }
+      $oDump->timeoutReset;
+   }
+
+   $oWrite->close;
+   $oDump->stop;
+
+   $mac;
+}
+
+sub _searchSrcIp6 {
+   my $self = shift;
+   my ($ip6) = @_;
+   my @dnet6 = intf_get_dst6($ip6) or return undef;
+   my $dev = $self->[$__dev];
+   my $dnet6;
+   for (@dnet6) {
+      if ($_->{name} eq $dev) {
+         $dnet6 = $_;
+         last;
+      }
+   }
+   my ($srcIp6) = split('/', $dnet6->{addr6});
+   $srcIp6;
+}
+
+sub lookupMac6 {
+   my $self = shift;
+   my ($ip6) = @_;
+
+   # XXX: No ARP6 cache support for now
+
+   # If gatewayIp6 is not set, the target is on the same subnet, 
+   # we lookup its MAC address
+   if (! $self->[$__gatewayIp6]) {
+      # We must change source IPv6 address to the one of same subnet
+      my $srcIp6 = $self->_searchSrcIp6($ip6);
+      return $self->_lookupMac6($ip6, $srcIp6);
+   }
+   # Otherwise, we lookup the gateway MAC address, and store it
+   else {
+      # If already retrieved
+      return $self->[$__gatewayMac6] if $self->[$__gatewayMac6];
+
+      # Else, lookup it, and store it
+      # We must change source IPv6 address to the one of same subnet
+      my $srcIp6 = $self->_searchSrcIp6($self->[$__gatewayIp6]);
+      my $gatewayMac6 = $self->_lookupMac6($self->[$__gatewayIp6], $srcIp6);
+      $self->[$__gatewayMac6] = $gatewayMac6;
+      return $gatewayMac6;
+   }
+   undef;
 }
 
 sub debugDeviceList {
-   use Data::Dumper;
-
    my %dev;
    my $err;
    Net::Pcap::findalldevs(\%dev, \$err);
@@ -280,9 +441,9 @@ sub debugDeviceList {
    # Net::Libdnet stuff
    for my $i (0..5) {
       my $eth = 'eth'.$i;
-      my $dnet = Net::Libdnet::intf_get($eth);
+      my $dnet = intf_get($eth);
       last unless keys %$dnet > 0;
-      $dnet->{subnet} = Net::Libdnet::addr_net($dnet->{addr})
+      $dnet->{subnet} = addr_net($dnet->{addr})
          if $dnet->{addr};
       print STDERR Dumper($dnet)."\n";
    }
@@ -316,6 +477,14 @@ Net::Frame::Device - get network device information and gateway
    print "gatewayIp:  ", $device->gatewayIp,  "\n" if $device->gatewayIp;
    print "gatewayMac: ", $device->gatewayMac, "\n" if $device->gatewayMac;
 
+   # Get values from a specific target
+   my $device5 = Net::Frame::Device->new(target6 => '2001::1');
+
+   print "dev: ", $device5->dev, "\n";
+   print "mac: ", $device5->mac, "\n";
+   print "ip6: ", $device5->ip6, "\n";
+   print "gatewayIp6:  ", $device5->gatewayIp6, "\n" if $device5->gatewayIp6;
+
 =head1 DESCRIPTION
 
 This module is used to get network information, and is especially useful when you want to do low-level network programming.
@@ -328,27 +497,35 @@ It also provides useful functions to lookup network MAC addresses.
 
 =item B<dev>
 
-The network device. If none found, it defaults to loopback interface.
+The network device. undef if none found.
 
 =item B<ip>
 
-The IPv4 address of B<dev>. If none found, it defaults to '127.0.0.1'.
+The IPv4 address of B<dev>. undef if none found.
 
 =item B<ip6>
 
-The IPv6 address of B<dev>. If none found, it defaults to '::1'.
+The IPv6 address of B<dev>. undef if none found.
 
 =item B<mac>
 
-The MAC address of B<dev>. If none found, it defaults to 'ff:ff:ff:ff:ff:ff'.
+The MAC address of B<dev>. undef if none found.
 
 =item B<subnet>
 
-The subnet of IPv4 address B<ip>. If none found, it defaults to '127.0.0.0/8';
+The subnet of IPv4 address B<ip>. undef if none found.
+
+=item B<subnet6>
+
+The subnet of IPv6 address B<ip6>. undef if none found.
 
 =item B<gatewayIp>
 
 The gateway IPv4 address. It defaults to default gateway that let you access Internet. If none found, or not required in the usage context, it defaults to undef.
+
+=item B<gatewayIp6>
+
+The gateway IPv6 address. It defaults to default gateway that let you access Internet. If none found, or not required in the usage context, it defaults to undef.
 
 =item B<gatewayMac>
 
@@ -357,6 +534,10 @@ The MAC address B<gatewayIp>. The MAC is looked up from cache. If there is nothi
 =item B<target>
 
 This attribute is used when you want to detect which B<dev>, B<ip>, B<mac> attributes to use for a specific target. See B<SYNOPSIS>.
+
+=item B<target6>
+
+This attribute is used when you want to detect which B<dev>, B<ip6>, B<mac> attributes to use for a specific target. See B<SYNOPSIS>.
 
 =back
 
@@ -386,9 +567,19 @@ Will update attributes according to B<dev> attribute, or if you specify 'dev' as
 
 Will update attributes according to B<target> attribute, or if you specify 'target' as a parameter, it will use it for updating (and will also set B<target> to this new value).
 
+=item B<updateFromTarget6>
+
+=item B<updateFromTarget6> (target6)
+
+Will update attributes according to B<target6> attribute, or if you specify 'target6' as a parameter, it will use it for updating (and will also set B<target6> to this new value).
+
 =item B<lookupMac> (IPv4 address)
 
-Will try to get the MAC address of the specified IPv4 address. First, if checks against ARP cache table. Then, verify the target is on the same subnet as we are, and if yes, it does the ARP request. If not on the same subnet, it tries to resolve the gateway MAC address (by using B<gatewayIp> attribute). Returns undef on failure.
+Will try to get the MAC address of the specified IPv4 address. First, it checks against ARP cache table. Then, verify the target is on the same subnet as we are, and if yes, it does the ARP request. If not on the same subnet, it tries to resolve the gateway MAC address (by using B<gatewayIp> attribute). Returns undef on failure.
+
+=item B<lookupMac6> (IPv6 address)
+
+Will try to get the MAC address of the specified IPv6 address (using ICMPv6). First, verify the target is on the same subnet as we are, and if yes, it does the ICMPv6 lookup request. If not on the same subnet, it tries to resolve the gateway MAC address (by using B<gatewayIp6> attribute). Returns undef on failure.
 
 =item B<debugDeviceList>
 

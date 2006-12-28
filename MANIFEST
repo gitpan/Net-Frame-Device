@@ -1,8 +1,10 @@
 bin/debug-devices.pl
 Changes
+examples/get-mac6.pl
 examples/get-mac.pl
 examples/new-default.pl
 examples/new-from-dev.pl
+examples/new-from-target6.pl
 examples/new-from-target.pl
 lib/Net/Frame/Device.pm
 LICENSE

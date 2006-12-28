@@ -1,5 +1,12 @@
 Revision history for Perl extension Net::Frame::Device.
 
+1.02 Thu Dec 28 17:05:27 CET 2006
+   - NEW: IPv6 support (*BSD and Linux systems for now)
+   - new: methods: lookupMac6(), updateFromTarget6()
+   - new: attributes: subnet6, gatewayIp6, gatewayMac6, target6
+   - new examples
+   - new dependances
+
 1.01 Sun Dec 17 17:22:29 CET 2006
    - NEW: debug-devices.pl in bin/ directory
    - UPDATE: all layers moved to Net::Frame::Layer::* namespace

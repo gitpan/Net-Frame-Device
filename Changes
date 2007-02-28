@@ -1,5 +1,8 @@
 Revision history for Perl extension Net::Frame::Device.
 
+1.03 Wed Feb 28 22:07:28 CET 2007
+   - bugfix: lookupMac*(): check for link layer type before building frame
+
 1.02 Thu Dec 28 17:05:27 CET 2006
    - NEW: IPv6 support (*BSD and Linux systems for now)
    - new: methods: lookupMac6(), updateFromTarget6()

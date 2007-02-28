@@ -1,11 +1,11 @@
 #
-# $Id: Device.pm,v 1.13 2006/12/28 15:57:19 gomor Exp $
+# $Id: Device.pm,v 1.15 2007/02/28 21:07:03 gomor Exp $
 #
 package Net::Frame::Device;
 use strict;
 use warnings;
 
-our $VERSION = '1.02';
+our $VERSION = '1.03';
 
 require Class::Gomor::Array;
 our @ISA = qw(Class::Gomor::Array);
@@ -221,6 +221,20 @@ sub _lookupMac {
    my $self = shift;
    my ($ip) = @_;
 
+   my $oWrite = Net::Write::Layer2->new(dev => $self->[$__dev]);
+   my $oDump  = Net::Frame::Dump::Online->new(
+      dev    => $self->[$__dev],
+      filter => 'arp',
+   );
+
+   $oDump->start;
+   if ($oDump->firstLayer ne 'ETH') {
+      $oDump->stop;
+      croak("lookupMac: can't do that on non-ethernet link layers\n");
+   }
+
+   $oWrite->open;
+
    my $eth = Net::Frame::Layer::ETH->new(
       src  => $self->[$__mac],
       dst  => NF_ETH_ADDR_BROADCAST,
@@ -233,20 +247,6 @@ sub _lookupMac {
    );
    $eth->pack;
    $arp->pack;
-
-   my $oWrite = Net::Write::Layer2->new(dev => $self->[$__dev]);
-   my $oDump  = Net::Frame::Dump::Online->new(
-      dev    => $self->[$__dev],
-      filter => 'arp',
-   );
-
-   $oDump->start;
-   if ($oDump->firstLayer != NF_DUMP_LAYER_ETH) {
-      $oDump->stop;
-      croak("lookupMac: can't do that on non-ethernet link layers\n");
-   }
-
-   $oWrite->open;
 
    # We retry three times
    my $mac;
@@ -303,6 +303,20 @@ sub _lookupMac6 {
    my $self = shift;
    my ($ip6, $srcIp6) = @_;
 
+   my $oWrite = Net::Write::Layer2->new(dev => $self->[$__dev]);
+   my $oDump  = Net::Frame::Dump::Online->new(
+      dev    => $self->[$__dev],
+      filter => 'icmp6',
+   );
+
+   $oDump->start;
+   if ($oDump->firstLayer ne 'ETH') {
+      $oDump->stop;
+      croak("lookupMac: can't do that on non-ethernet link layers\n");
+   }
+
+   $oWrite->open;
+
    my $srcMac = $self->[$__mac];
 
    # XXX: risky
@@ -339,20 +353,6 @@ sub _lookupMac6 {
    my $oSimple = Net::Frame::Simple->new(
       layers => [ $eth, $ip, $icmp, ],
    );
-
-   my $oWrite = Net::Write::Layer2->new(dev => $self->[$__dev]);
-   my $oDump  = Net::Frame::Dump::Online->new(
-      dev    => $self->[$__dev],
-      filter => 'icmp6',
-   );
-
-   $oDump->start;
-   if ($oDump->firstLayer != NF_DUMP_LAYER_ETH) {
-      $oDump->stop;
-      croak("lookupMac: can't do that on non-ethernet link layers\n");
-   }
-
-   $oWrite->open;
 
    # We retry three times
    my $mac;
@@ -529,7 +529,11 @@ The gateway IPv6 address. It defaults to default gateway that let you access Int
 
 =item B<gatewayMac>
 
-The MAC address B<gatewayIp>. The MAC is looked up from cache. If there is nothing in the cache, it does an ARP request to get it. Finally, if there is no response, attribute is set to undef.
+The MAC address B<gatewayIp>. See B<lookupMac> method.
+
+=item B<gatewayMac6>
+
+The MAC address B<gatewayIp6>. See B<lookupMac6> method.
 
 =item B<target>
 
@@ -593,7 +597,7 @@ Patrice E<lt>GomoRE<gt> Auffret
 
 =head1 COPYRIGHT AND LICENSE
    
-Copyright (c) 2006, Patrice E<lt>GomoRE<gt> Auffret
+Copyright (c) 2006-2007, Patrice E<lt>GomoRE<gt> Auffret
    
 You may distribute this module under the terms of the Artistic license.
 See LICENSE.Artistic file in the source distribution archive.

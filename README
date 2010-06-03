@@ -26,13 +26,13 @@ This module requires these other modules and libraries:
 
 GETTING HELP
 
-A mailing list is available for all questions concerning Net::Frame::*, just 
-send a message to netpacket-users@gomor.org (this is a moderated list).
+A mailing list is available for all questions concerning Net::Frame::*:
+http://lists.gomor.org/mailman/listinfo/netframe
 
 COPYRIGHT AND LICENSE
 
 You may distribute this module under the terms of the Artistic license.
 See LICENSE.Artistic file in the source distribution archive.
 
-Copyright (c) 2006-2007, Patrice <GomoR> Auffret
+Copyright (c) 2006-2010, Patrice <GomoR> Auffret
 

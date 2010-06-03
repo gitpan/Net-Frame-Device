@@ -1,11 +1,11 @@
 #
-# $Id: Device.pm,v 1.15 2007/02/28 21:07:03 gomor Exp $
+# $Id: Device.pm 317 2010-06-03 13:44:14Z gomor $
 #
 package Net::Frame::Device;
 use strict;
 use warnings;
 
-our $VERSION = '1.03';
+our $VERSION = '1.04';
 
 require Class::Gomor::Array;
 our @ISA = qw(Class::Gomor::Array);
@@ -62,7 +62,8 @@ sub new {
    $self->[$__target6] && return $self->updateFromTarget6;
    $self->[$__dev]     && return $self->updateFromDev;
 
-   $self->updateFromDefault;
+   $self->updateFromDefault or return;
+   $self;
 }
 
 sub _update {
@@ -91,7 +92,8 @@ sub _update {
 # By default, we take outgoing device to Internet
 sub updateFromDefault {
    my $self = shift;
-   $self->[$___dnet] = intf_get_dst('1.1.1.1');
+   $self->[$___dnet] = intf_get_dst('1.1.1.1')
+      or die("Net::Frame::Device: updateFromDefault: unable to get dnet\n");
 
    my $dnet6 = intf_get6($self->[$___dnet]->{name});
    $self->_update($dnet6);
@@ -101,7 +103,8 @@ sub updateFromDev {
    my $self = shift;
    my ($dev) = @_;
    $self->[$__dev]   = $dev if $dev;
-   $self->[$___dnet] = intf_get6($self->[$__dev]);
+   $self->[$___dnet] = intf_get6($self->[$__dev])
+      or die("Net::Frame::Device: updateFromDev: unable to get dnet\n");
    $self->_update;
 }
 
@@ -109,7 +112,8 @@ sub updateFromTarget {
    my $self = shift;
    my ($target) = @_;
    $self->[$__target] = $target if $target;
-   $self->[$___dnet]  = intf_get_dst($self->[$__target]);
+   $self->[$___dnet]  = intf_get_dst($self->[$__target])
+      or die("Net::Frame::Device: updateFromTarget: unable to get dnet\n");
 
    my $dnet6 = intf_get6($self->[$___dnet]->{name});
    $self->_update($dnet6);
@@ -125,10 +129,14 @@ sub updateFromTarget6 {
          croak("Multiple possible network interface for target6, ".
                "choose `dev' manually\n");
       }
-      $self->[$___dnet] = intf_get6($self->[$__dev]);
+      $self->[$___dnet] = intf_get6($self->[$__dev])
+         or die("Net::Frame::Device: updateFromTarget6: unable to get dnet\n");
+   }
+   elsif (@dnetList == 1) {
+      $self->[$___dnet] = $dnetList[0];
    }
    else {
-      $self->[$___dnet] = $dnetList[0];
+      die("Net::Frame::Device: updateFromTarget6: unable to get dnet\n");
    }
    $self->_update;
 }
@@ -189,16 +197,16 @@ sub _getGatewayMac {
 
 sub _getSubnet {
    my $addr = shift->[$___dnet]->{addr};
-   return undef unless $addr;
-   my $subnet = addr_net($addr);
+   return unless $addr;
+   my $subnet = addr_net($addr) or return;
    (my $mask = $addr) =~ s/^.*(\/\d+)$/$1/;
    $subnet.$mask;
 }
 
 sub _getSubnet6 {
    my $addr = shift->[$___dnet]->{addr6};
-   return undef unless $addr;
-   my $subnet = addr_net6($addr);
+   return unless $addr;
+   my $subnet = addr_net6($addr) or return;
    (my $mask = $addr) =~ s/^.*(\/\d+)$/$1/;
    $subnet.$mask;
 }
@@ -597,7 +605,7 @@ Patrice E<lt>GomoRE<gt> Auffret
 
 =head1 COPYRIGHT AND LICENSE
    
-Copyright (c) 2006-2007, Patrice E<lt>GomoRE<gt> Auffret
+Copyright (c) 2006-2010, Patrice E<lt>GomoRE<gt> Auffret
    
 You may distribute this module under the terms of the Artistic license.
 See LICENSE.Artistic file in the source distribution archive.

@@ -1,5 +1,11 @@
 Revision history for Perl extension Net::Frame::Device.
 
+1.04 Thu Jun  3 15:44:42 CEST 2010
+   - bugfix: die() on fatal errors from dnet
+   - bugfix: new() returns undef on error
+   - update: mailing list URL, see README
+   - update: copyright notice and email address
+
 1.03 Wed Feb 28 22:07:28 CET 2007
    - bugfix: lookupMac*(): check for link layer type before building frame
 

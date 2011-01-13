@@ -1,11 +1,11 @@
 #
-# $Id: Device.pm 317 2010-06-03 13:44:14Z gomor $
+# $Id: Device.pm 323 2011-01-13 10:04:08Z gomor $
 #
 package Net::Frame::Device;
 use strict;
 use warnings;
 
-our $VERSION = '1.04';
+our $VERSION = '1.05';
 
 require Class::Gomor::Array;
 our @ISA = qw(Class::Gomor::Array);
@@ -53,6 +53,7 @@ use Net::Frame::Layer::ETH qw(:consts);
 use Net::Frame::Layer::ARP qw(:consts);
 use Net::Frame::Layer::IPv6 qw(:consts);
 use Net::Frame::Layer::ICMPv6 qw(:consts);
+use Net::Frame::Layer::ICMPv6::NeighborSolicitation;
 use Net::Frame::Simple;
 
 sub new {
@@ -103,9 +104,11 @@ sub updateFromDev {
    my $self = shift;
    my ($dev) = @_;
    $self->[$__dev]   = $dev if $dev;
-   $self->[$___dnet] = intf_get6($self->[$__dev])
+   $self->[$___dnet] = intf_get($self->[$__dev])
       or die("Net::Frame::Device: updateFromDev: unable to get dnet\n");
-   $self->_update;
+
+   my $dnet6 = intf_get6($self->[$__dev]);
+   $self->_update($dnet6);
 }
 
 sub updateFromTarget {
@@ -320,7 +323,7 @@ sub _lookupMac6 {
    $oDump->start;
    if ($oDump->firstLayer ne 'ETH') {
       $oDump->stop;
-      croak("lookupMac: can't do that on non-ethernet link layers\n");
+      croak("lookupMac6: can't do that on non-ethernet link layers\n");
    }
 
    $oWrite->open;
@@ -345,11 +348,11 @@ sub _lookupMac6 {
       nextHeader => NF_IPv6_PROTOCOL_ICMPv6,
    );
    my $icmp = Net::Frame::Layer::ICMPv6->new(
-      type     => NF_ICMPv6_TYPE_NEIGHBORSOLICITATION,
-      icmpType => Net::Frame::Layer::ICMPv6::NeighborSolicitation->new(
-         targetAddress => $ip6,
-      ),
-      options => [
+      type => NF_ICMPv6_TYPE_NEIGHBORSOLICITATION,
+   );
+   my $icmpType = Net::Frame::Layer::ICMPv6::NeighborSolicitation->new(
+      targetAddress => $ip6,
+      options       => [
          Net::Frame::Layer::ICMPv6::Option->new(
             type   => NF_ICMPv6_OPTION_SOURCELINKLAYERADDRESS,
             length => 1,
@@ -359,7 +362,7 @@ sub _lookupMac6 {
    );
 
    my $oSimple = Net::Frame::Simple->new(
-      layers => [ $eth, $ip, $icmp, ],
+      layers => [ $eth, $ip, $icmp, $icmpType ],
    );
 
    # We retry three times
@@ -369,7 +372,7 @@ FIRST:
       $oWrite->send($oSimple->raw);
       until ($oDump->timeout) {
          if (my $oReply = $oSimple->recv($oDump)) {
-            for ($oReply->ref->{ICMPv6}->options) {
+            for ($oReply->ref->{'ICMPv6::NeighborAdvertisement'}->options) {
                if ($_->type eq NF_ICMPv6_OPTION_TARGETLINKLAYERADDRESS) {
                   $mac = convertMac(unpack('H*', $_->value));
                   last FIRST;
@@ -383,7 +386,7 @@ FIRST:
    $oWrite->close;
    $oDump->stop;
 
-   $mac;
+   return $mac;
 }
 
 sub _searchSrcIp6 {
@@ -605,7 +608,7 @@ Patrice E<lt>GomoRE<gt> Auffret
 
 =head1 COPYRIGHT AND LICENSE
    
-Copyright (c) 2006-2010, Patrice E<lt>GomoRE<gt> Auffret
+Copyright (c) 2006-2011, Patrice E<lt>GomoRE<gt> Auffret
    
 You may distribute this module under the terms of the Artistic license.
 See LICENSE.Artistic file in the source distribution archive.

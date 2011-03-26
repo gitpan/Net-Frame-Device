@@ -1,11 +1,11 @@
 #
-# $Id: Device.pm 323 2011-01-13 10:04:08Z gomor $
+# $Id: Device.pm 344 2011-03-23 14:03:26Z gomor $
 #
 package Net::Frame::Device;
 use strict;
 use warnings;
 
-our $VERSION = '1.05';
+our $VERSION = '1.06';
 
 require Class::Gomor::Array;
 our @ISA = qw(Class::Gomor::Array);
@@ -47,7 +47,7 @@ require Net::IPv6Addr;
 require Net::Pcap;
 require Net::Write::Layer2;
 use Net::Frame::Dump qw(:consts);
-use Net::Frame::Dump::Online;
+use Net::Frame::Dump::Online2;
 use Net::Frame::Layer qw(:subs);
 use Net::Frame::Layer::ETH qw(:consts);
 use Net::Frame::Layer::ARP qw(:consts);
@@ -230,12 +230,13 @@ sub _getIp6 {
 
 sub _lookupMac {
    my $self = shift;
-   my ($ip) = @_;
+   my ($ip, $retry, $timeout) = @_;
 
    my $oWrite = Net::Write::Layer2->new(dev => $self->[$__dev]);
-   my $oDump  = Net::Frame::Dump::Online->new(
-      dev    => $self->[$__dev],
-      filter => 'arp',
+   my $oDump  = Net::Frame::Dump::Online2->new(
+      dev           => $self->[$__dev],
+      filter        => 'arp',
+      timeoutOnNext => $timeout,
    );
 
    $oDump->start;
@@ -261,7 +262,7 @@ sub _lookupMac {
 
    # We retry three times
    my $mac;
-   for (1..3) {
+   for (1..$retry) {
       $oWrite->send($eth->raw.$arp->raw);
       until ($oDump->timeout) {
          if (my $h = $oDump->next) {
@@ -282,12 +283,15 @@ sub _lookupMac {
    $oWrite->close;
    $oDump->stop;
 
-   $mac;
+   return $mac;
 }
 
 sub lookupMac {
    my $self = shift;
-   my ($ip) = @_;
+   my ($ip, $retry, $timeout) = @_;
+
+   $retry   ||= 1;
+   $timeout ||= 1;
 
    # First, lookup the ARP cache table
    my $mac = $self->_getMacFromCache($ip);
@@ -295,7 +299,7 @@ sub lookupMac {
 
    # Then, is the target on same subnet, or not ?
    if (Net::IPv4Addr::ipv4_in_network($self->[$__subnet], $ip)) {
-      return $self->_lookupMac($ip);
+      return $self->_lookupMac($ip, $retry, $timeout);
    }
    # Get gateway MAC
    else {
@@ -303,21 +307,25 @@ sub lookupMac {
       return $self->[$__gatewayMac] if $self->[$__gatewayMac];
 
       # Else, lookup it, and store it
-      my $gatewayMac = $self->_lookupMac($self->[$__gatewayIp]);
+      my $gatewayMac = $self->_lookupMac(
+         $self->[$__gatewayIp], $retry, $timeout,
+      );
       $self->[$__gatewayMac] = $gatewayMac;
       return $gatewayMac;
    }
-   undef;
+
+   return;
 }
 
 sub _lookupMac6 {
    my $self = shift;
-   my ($ip6, $srcIp6) = @_;
+   my ($ip6, $srcIp6, $retry, $timeout) = @_;
 
    my $oWrite = Net::Write::Layer2->new(dev => $self->[$__dev]);
-   my $oDump  = Net::Frame::Dump::Online->new(
-      dev    => $self->[$__dev],
-      filter => 'icmp6',
+   my $oDump  = Net::Frame::Dump::Online2->new(
+      dev           => $self->[$__dev],
+      filter        => 'icmp6',
+      timeoutOnNext => $timeout,
    );
 
    $oDump->start;
@@ -368,7 +376,7 @@ sub _lookupMac6 {
    # We retry three times
    my $mac;
 FIRST:
-   for (1..3) {
+   for (1..$retry) {
       $oWrite->send($oSimple->raw);
       until ($oDump->timeout) {
          if (my $oReply = $oSimple->recv($oDump)) {
@@ -407,7 +415,10 @@ sub _searchSrcIp6 {
 
 sub lookupMac6 {
    my $self = shift;
-   my ($ip6) = @_;
+   my ($ip6, $retry, $timeout) = @_;
+
+   $retry   ||= 1;
+   $timeout ||= 1;
 
    # XXX: No ARP6 cache support for now
 
@@ -416,7 +427,7 @@ sub lookupMac6 {
    if (! $self->[$__gatewayIp6]) {
       # We must change source IPv6 address to the one of same subnet
       my $srcIp6 = $self->_searchSrcIp6($ip6);
-      return $self->_lookupMac6($ip6, $srcIp6);
+      return $self->_lookupMac6($ip6, $srcIp6, $retry, $timeout);
    }
    # Otherwise, we lookup the gateway MAC address, and store it
    else {
@@ -426,11 +437,14 @@ sub lookupMac6 {
       # Else, lookup it, and store it
       # We must change source IPv6 address to the one of same subnet
       my $srcIp6 = $self->_searchSrcIp6($self->[$__gatewayIp6]);
-      my $gatewayMac6 = $self->_lookupMac6($self->[$__gatewayIp6], $srcIp6);
+      my $gatewayMac6 = $self->_lookupMac6(
+         $self->[$__gatewayIp6], $srcIp6, $retry, $timeout,
+      );
       $self->[$__gatewayMac6] = $gatewayMac6;
       return $gatewayMac6;
    }
-   undef;
+
+   return;
 }
 
 sub debugDeviceList {
@@ -588,13 +602,13 @@ Will update attributes according to B<target> attribute, or if you specify 'targ
 
 Will update attributes according to B<target6> attribute, or if you specify 'target6' as a parameter, it will use it for updating (and will also set B<target6> to this new value).
 
-=item B<lookupMac> (IPv4 address)
+=item B<lookupMac> (IPv4 address, [ retry, timeout ])
 
-Will try to get the MAC address of the specified IPv4 address. First, it checks against ARP cache table. Then, verify the target is on the same subnet as we are, and if yes, it does the ARP request. If not on the same subnet, it tries to resolve the gateway MAC address (by using B<gatewayIp> attribute). Returns undef on failure.
+Will try to get the MAC address of the specified IPv4 address. First, it checks against ARP cache table. Then, verify the target is on the same subnet as we are, and if yes, it does the ARP request. If not on the same subnet, it tries to resolve the gateway MAC address (by using B<gatewayIp> attribute). You can add optional parameters retry count and timeout in seconds. Returns undef on failure. 
 
-=item B<lookupMac6> (IPv6 address)
+=item B<lookupMac6> (IPv6 address, [ retry, timeout ])
 
-Will try to get the MAC address of the specified IPv6 address (using ICMPv6). First, verify the target is on the same subnet as we are, and if yes, it does the ICMPv6 lookup request. If not on the same subnet, it tries to resolve the gateway MAC address (by using B<gatewayIp6> attribute). Returns undef on failure.
+Will try to get the MAC address of the specified IPv6 address (using ICMPv6). First, verify the target is on the same subnet as we are, and if yes, it does the ICMPv6 lookup request. If not on the same subnet, it tries to resolve the gateway MAC address (by using B<gatewayIp6> attribute). You can add optional parameters retry count and timeout in seconds. Returns undef on failure.
 
 =item B<debugDeviceList>
 

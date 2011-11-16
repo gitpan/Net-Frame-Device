@@ -1,15 +1,13 @@
 #
-# $Id: Device.pm 344 2011-03-23 14:03:26Z gomor $
+# $Id: Device.pm 349 2011-11-16 22:33:04Z gomor $
 #
 package Net::Frame::Device;
 use strict;
 use warnings;
 
-our $VERSION = '1.06';
+our $VERSION = '1.07';
 
-require Class::Gomor::Array;
-our @ISA = qw(Class::Gomor::Array);
-
+use base qw(Class::Gomor::Array);
 our @AS = qw(
    dev
    mac
@@ -42,10 +40,10 @@ no strict 'vars';
 use Carp qw(croak carp);
 use Data::Dumper;
 use Net::Libdnet6;
-require Net::IPv4Addr;
-require Net::IPv6Addr;
-require Net::Pcap;
-require Net::Write::Layer2;
+use Net::IPv4Addr;
+use Net::IPv6Addr;
+use Net::Pcap;
+use Net::Write::Layer2;
 use Net::Frame::Dump qw(:consts);
 use Net::Frame::Dump::Online2;
 use Net::Frame::Layer qw(:subs);
@@ -63,8 +61,9 @@ sub new {
    $self->[$__target6] && return $self->updateFromTarget6;
    $self->[$__dev]     && return $self->updateFromDev;
 
-   $self->updateFromDefault or return;
-   $self;
+   return $self->updateFromDefault or return;
+
+   return $self;
 }
 
 sub _update {
@@ -87,39 +86,76 @@ sub _update {
    $self->[$__gatewayIp6] = $self->_getGatewayIp6;
 
    $self->[$___dnet] = undef;
-   $self;
+
+   return $self;
 }
 
 # By default, we take outgoing device to Internet
 sub updateFromDefault {
    my $self = shift;
-   $self->[$___dnet] = intf_get_dst('1.1.1.1')
-      or die("Net::Frame::Device: updateFromDefault: unable to get dnet\n");
 
-   my $dnet6 = intf_get6($self->[$___dnet]->{name});
-   $self->_update($dnet6);
+   my $dnet = intf_get_dst('1.1.1.1');
+   if (! $dnet || keys %$dnet == 0) {
+      die("Net::Frame::Device: updateFromDefault: unable to get dnet\n");
+   }
+   $self->[$___dnet] = $dnet;
+
+   my $dnet6 = intf_get6($dnet->{name});
+   if (! $dnet6 || keys %$dnet6 == 0) {
+      return $self;
+   }
+
+   return $self->_update($dnet6);
 }
 
 sub updateFromDev {
    my $self = shift;
    my ($dev) = @_;
-   $self->[$__dev]   = $dev if $dev;
-   $self->[$___dnet] = intf_get($self->[$__dev])
-      or die("Net::Frame::Device: updateFromDev: unable to get dnet\n");
 
-   my $dnet6 = intf_get6($self->[$__dev]);
-   $self->_update($dnet6);
+   if (defined($dev)) {
+      $self->[$__dev] = $dev;
+   }
+   else {
+      $dev = $self->[$__dev];
+   }
+
+   my $dnet = intf_get($dev);
+   if (! $dnet || keys %$dnet == 0) {
+      die("Net::Frame::Device: updateFromDev: unable to get dnet\n");
+   }
+   $self->[$___dnet] = $dnet;
+
+   my $dnet6 = intf_get6($dev);
+   if (! $dnet6 || keys %$dnet6 == 0) {
+      return $self;
+   }
+
+   return $self->_update($dnet6);
 }
 
 sub updateFromTarget {
    my $self = shift;
    my ($target) = @_;
-   $self->[$__target] = $target if $target;
-   $self->[$___dnet]  = intf_get_dst($self->[$__target])
-      or die("Net::Frame::Device: updateFromTarget: unable to get dnet\n");
 
-   my $dnet6 = intf_get6($self->[$___dnet]->{name});
-   $self->_update($dnet6);
+   if (defined($target)) {
+      $self->[$__target] = $target;
+   }
+   else {
+      $target = $self->[$__target];
+   }
+
+   my $dnet = intf_get_dst($target);
+   if (! $dnet || keys %$dnet == 0) {
+      die("Net::Frame::Device: updateFromTarget: unable to get dnet\n");
+   }
+   $self->[$___dnet] = $dnet;
+
+   my $dnet6 = intf_get6($dnet->{name});
+   if (! $dnet6 || keys %$dnet6 == 0) {
+      return $self;
+   }
+
+   return $self->_update($dnet6);
 }
 
 sub updateFromTarget6 {
@@ -141,7 +177,7 @@ sub updateFromTarget6 {
    else {
       die("Net::Frame::Device: updateFromTarget6: unable to get dnet\n");
    }
-   $self->_update;
+   return $self->_update;
 }
 
 # Thanx to Maddingue
@@ -201,6 +237,9 @@ sub _getGatewayMac {
 sub _getSubnet {
    my $addr = shift->[$___dnet]->{addr};
    return unless $addr;
+   if ($addr !~ /\//) {
+      return;  # No netmask associated here
+   }
    my $subnet = addr_net($addr) or return;
    (my $mask = $addr) =~ s/^.*(\/\d+)$/$1/;
    $subnet.$mask;
@@ -209,6 +248,9 @@ sub _getSubnet {
 sub _getSubnet6 {
    my $addr = shift->[$___dnet]->{addr6};
    return unless $addr;
+   if ($addr !~ /\//) {
+      return;  # No netmask associated here
+   }
    my $subnet = addr_net6($addr) or return;
    (my $mask = $addr) =~ s/^.*(\/\d+)$/$1/;
    $subnet.$mask;

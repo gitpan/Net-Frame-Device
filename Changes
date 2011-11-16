@@ -1,5 +1,10 @@
 Revision history for Perl extension Net::Frame::Device.
 
+1.07 Wed Nov 16 23:32:20 CET 2011
+   - bugfix: correctly check return status from dnet calls
+   - bugfix: check if an address has a correct netmask (or ignore 
+             subnet attribute)
+
 1.06 Sat Mar 26 19:01:23 CET 2011
    - feature: lookupMac() and lookupMac6() takes two additionnal parameters: 
      retry count and timeout in seconds.

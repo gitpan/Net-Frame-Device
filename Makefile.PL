@@ -1,5 +1,5 @@
 #
-# $Id: Makefile.PL 349 2011-11-16 22:33:04Z gomor $
+# $Id: Makefile.PL 351 2012-09-12 11:37:58Z gomor $
 #
 use ExtUtils::MakeMaker;
 
@@ -23,6 +23,6 @@ WriteMakefile(
       Net::Frame::Dump          => '1.08',  # For Dump::Online2
       Net::Frame::Layer::IPv6   => 0,
       Net::Frame::Layer::ICMPv6 => 0,
-      Net::Frame::Simple        => 0,
+      Net::Frame::Simple        => '1.05',  # Cause of a bug in ICMPv6 unpacking
    },
 );

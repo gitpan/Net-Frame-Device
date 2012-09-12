@@ -1,11 +1,11 @@
 #
-# $Id: Device.pm 349 2011-11-16 22:33:04Z gomor $
+# $Id: Device.pm 352 2012-09-12 18:27:18Z gomor $
 #
 package Net::Frame::Device;
 use strict;
 use warnings;
 
-our $VERSION = '1.07';
+our $VERSION = '1.08';
 
 use base qw(Class::Gomor::Array);
 our @AS = qw(
@@ -37,7 +37,6 @@ BEGIN {
 
 no strict 'vars';
 
-use Carp qw(croak carp);
 use Data::Dumper;
 use Net::Libdnet6;
 use Net::IPv4Addr;
@@ -165,8 +164,8 @@ sub updateFromTarget6 {
    my @dnetList = intf_get_dst6($self->[$__target6]);
    if (@dnetList > 1) {
       if (! $self->[$__dev]) {
-         croak("Multiple possible network interface for target6, ".
-               "choose `dev' manually\n");
+         die("[-] ".__PACKAGE__.": Multiple possible network interface for ".
+             "target6, choose `dev' manually\n");
       }
       $self->[$___dnet] = intf_get6($self->[$__dev])
          or die("Net::Frame::Device: updateFromTarget6: unable to get dnet\n");
@@ -189,19 +188,19 @@ sub _toDotQuad {
 sub _getDevWin32 {
    my $self = shift;
 
-   croak("@{[(caller(0))[3]]}: unable to find a suitable device\n")
+   die("[-] ".__PACKAGE__.": unable to find a suitable device\n")
       unless $self->[$___dnet]->{name};
 
    # Get dnet interface name and its subnet
    my $dnet   = $self->[$___dnet]->{name};
    my $subnet = addr_net($self->[$___dnet]->{addr});
-   croak("@{[(caller(0))[3]]}: Net::Libdnet::addr_net() error\n")
+   die("[-] ".__PACKAGE__.": Net::Libdnet::addr_net() error\n")
       unless $subnet;
 
    my %dev;
    my $err;
    Net::Pcap::findalldevs(\%dev, \$err);
-   croak("@{[(caller(0))[3]]}: Net::Pcap::findalldevs() error: $err\n")
+   die("[-] ".__PACKAGE__.": Net::Pcap::findalldevs() error: $err\n")
       if $err;
 
    # Search for corresponding WinPcap interface, via subnet value.
@@ -211,7 +210,7 @@ sub _getDevWin32 {
       my $net;
       my $mask;
       if (Net::Pcap::lookupnet($d, \$net, \$mask, \$err) < 0) {
-         croak("@{[(caller(0))[3]]}: Net::Pcap::lookupnet(): $d: $err\n")
+         die("[-] ".__PACKAGE__.": Net::Pcap::lookupnet(): $d: $err\n")
       }
       $net = _toDotQuad($net);
       if ($net eq $subnet) {
@@ -284,7 +283,8 @@ sub _lookupMac {
    $oDump->start;
    if ($oDump->firstLayer ne 'ETH') {
       $oDump->stop;
-      croak("lookupMac: can't do that on non-ethernet link layers\n");
+      die("[-] ".__PACKAGE__.": lookupMac: can't do that on non-ethernet ".
+          "link layers\n");
    }
 
    $oWrite->open;
@@ -373,7 +373,8 @@ sub _lookupMac6 {
    $oDump->start;
    if ($oDump->firstLayer ne 'ETH') {
       $oDump->stop;
-      croak("lookupMac6: can't do that on non-ethernet link layers\n");
+      die("[-] ".__PACKAGE__.": lookupMac6: can't do that on non-ethernet ".
+          "link layers\n");
    }
 
    $oWrite->open;
@@ -464,9 +465,9 @@ sub lookupMac6 {
 
    # XXX: No ARP6 cache support for now
 
-   # If gatewayIp6 is not set, the target is on the same subnet, 
+   # If target IPv6 begins with fe80, we are on the same subnet,
    # we lookup its MAC address
-   if (! $self->[$__gatewayIp6]) {
+   if ($ip6 =~ /^fe80/i) {
       # We must change source IPv6 address to the one of same subnet
       my $srcIp6 = $self->_searchSrcIp6($ip6);
       return $self->_lookupMac6($ip6, $srcIp6, $retry, $timeout);
@@ -475,6 +476,12 @@ sub lookupMac6 {
    else {
       # If already retrieved
       return $self->[$__gatewayMac6] if $self->[$__gatewayMac6];
+
+      # No IPv6 gateway?
+      if (! $self->[$__gatewayIp6]) {
+         print("[-] lookupMac6: no IPv6 gateway, no default route?\n");
+         return;
+      }
 
       # Else, lookup it, and store it
       # We must change source IPv6 address to the one of same subnet
@@ -664,7 +671,7 @@ Patrice E<lt>GomoRE<gt> Auffret
 
 =head1 COPYRIGHT AND LICENSE
    
-Copyright (c) 2006-2011, Patrice E<lt>GomoRE<gt> Auffret
+Copyright (c) 2006-2012, Patrice E<lt>GomoRE<gt> Auffret
    
 You may distribute this module under the terms of the Artistic license.
 See LICENSE.Artistic file in the source distribution archive.

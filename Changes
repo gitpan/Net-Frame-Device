@@ -1,5 +1,11 @@
 Revision history for Perl extension Net::Frame::Device.
 
+1.08 Wed Sep 12 20:26:23 CEST 2012
+   - bugfix: Don't try lookupMac6() if gatewayIp6 has not been found
+   - update: dependance on Net::Frame::Simple 1.05 forced
+   - update: error message scheme
+   - update: copyright notice
+
 1.07 Wed Nov 16 23:32:20 CET 2011
    - bugfix: correctly check return status from dnet calls
    - bugfix: check if an address has a correct netmask (or ignore 

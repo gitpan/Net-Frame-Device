@@ -1,5 +1,5 @@
 #
-# $Id: Makefile.PL 351 2012-09-12 11:37:58Z gomor $
+# $Id: Makefile.PL 354 2012-11-16 15:28:51Z gomor $
 #
 use ExtUtils::MakeMaker;
 
@@ -25,4 +25,9 @@ WriteMakefile(
       Net::Frame::Layer::ICMPv6 => 0,
       Net::Frame::Simple        => '1.05',  # Cause of a bug in ICMPv6 unpacking
    },
+   MIN_PERL_VERSION => '5.6.1',
+   EXE_FILES        => [
+      'bin/nfd-debug-devices.pl',
+      'bin/nfd-print-routes6.pl',
+   ],
 );

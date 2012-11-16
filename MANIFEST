@@ -1,4 +1,5 @@
-bin/debug-devices.pl
+bin/nfd-debug-devices.pl
+bin/nfd-print-routes6.pl
 Changes
 examples/get-mac6.pl
 examples/get-mac.pl
@@ -17,3 +18,5 @@ t/02-pod-coverage.t
 t/03-test-pod.t
 t/04-new-default.t
 t/05-new-target.t
+META.yml                                 Module YAML meta-data (added by MakeMaker)
+META.json                                Module JSON meta-data (added by MakeMaker)

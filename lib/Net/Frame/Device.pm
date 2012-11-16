@@ -1,11 +1,11 @@
 #
-# $Id: Device.pm 352 2012-09-12 18:27:18Z gomor $
+# $Id: Device.pm 354 2012-11-16 15:28:51Z gomor $
 #
 package Net::Frame::Device;
 use strict;
 use warnings;
 
-our $VERSION = '1.08';
+our $VERSION = '1.09';
 
 use base qw(Class::Gomor::Array);
 our @AS = qw(

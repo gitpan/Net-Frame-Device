@@ -31,4 +31,4 @@ requires:
   Net::Pcap: 0.12
   Net::Write: 1.00
   perl: 5.006001
-version: 1.09
+version: 1.10

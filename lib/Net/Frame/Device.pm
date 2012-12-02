@@ -1,11 +1,11 @@
 #
-# $Id: Device.pm 354 2012-11-16 15:28:51Z gomor $
+# $Id: Device.pm 357 2012-12-02 16:09:08Z gomor $
 #
 package Net::Frame::Device;
 use strict;
 use warnings;
 
-our $VERSION = '1.09';
+our $VERSION = '1.10';
 
 use base qw(Class::Gomor::Array);
 our @AS = qw(
@@ -426,6 +426,11 @@ FIRST:
             for ($oReply->ref->{'ICMPv6::NeighborAdvertisement'}->options) {
                if ($_->type eq NF_ICMPv6_OPTION_TARGETLINKLAYERADDRESS) {
                   $mac = convertMac(unpack('H*', $_->value));
+                  if ($mac !~
+/^[a-f0-9]{2}:[a-f0-9]{2}:[a-f0-9]{2}:[a-f0-9]{2}:[a-f0-9]{2}:[a-f0-9]{2}$/i) {
+                     die("[-] ".__PACKAGE__.": lookupMac6: ".
+                         "MAC address format error: [$mac]\n");
+                  }
                   last FIRST;
                }
             }

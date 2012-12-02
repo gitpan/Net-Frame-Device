@@ -1,5 +1,8 @@
 Revision history for Perl extension Net::Frame::Device.
 
+1.10 Sun Dec  2 17:08:27 CET 2012
+   - bugfix: analyze response to lookupMac6 to check MAC address is valid
+
 1.09 Fri Nov 16 16:28:14 CET 2012
    - new: bin/nfd-print-routes6.pl
    - bugfix: install bin/nfd-debug-devices.pl and bin/nfd-print-routes6.pl

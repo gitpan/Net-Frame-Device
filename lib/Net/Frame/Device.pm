@@ -1,11 +1,11 @@
 #
-# $Id: Device.pm 357 2012-12-02 16:09:08Z gomor $
+# $Id: Device.pm 359 2015-01-04 16:49:32Z gomor $
 #
 package Net::Frame::Device;
 use strict;
 use warnings;
 
-our $VERSION = '1.10';
+our $VERSION = '1.11';
 
 use base qw(Class::Gomor::Array);
 our @AS = qw(
@@ -60,9 +60,7 @@ sub new {
    $self->[$__target6] && return $self->updateFromTarget6;
    $self->[$__dev]     && return $self->updateFromDev;
 
-   return $self->updateFromDefault or return;
-
-   return $self;
+   return $self->updateFromDefault;
 }
 
 sub _update {
@@ -676,7 +674,7 @@ Patrice E<lt>GomoRE<gt> Auffret
 
 =head1 COPYRIGHT AND LICENSE
    
-Copyright (c) 2006-2012, Patrice E<lt>GomoRE<gt> Auffret
+Copyright (c) 2006-2015, Patrice E<lt>GomoRE<gt> Auffret
    
 You may distribute this module under the terms of the Artistic license.
 See LICENSE.Artistic file in the source distribution archive.
